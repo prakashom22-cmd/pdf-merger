@@ -1,0 +1,42 @@
+<input type="file" id="f" accept="application/pdf" multiple>
+<button id="go" disabled>Loading Python…</button>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+let pyodide;
+(async () => {
+  pyodide = await loadPyodide();
+  await pyodide.loadPackage("micropip");
+  await pyodide.runPythonAsync(`
+import micropip
+await micropip.install("pypdf")
+`);
+  const btn = document.getElementById("go");
+  btn.disabled = false;
+  btn.textContent = "Merge";
+  btn.onclick = merge;
+})();
+
+async function merge() {
+  const files = document.getElementById("f").files;
+  const names = [];
+  for (let i = 0; i < files.length; i++) {
+    const data = new Uint8Array(await files[i].arrayBuffer());
+    pyodide.FS.writeFile(`/in${i}.pdf`, data);
+    names.push(`/in${i}.pdf`);
+  }
+  pyodide.globals.set("names", names);
+  await pyodide.runPythonAsync(`
+from pypdf import PdfWriter
+w = PdfWriter()
+for n in names.to_py():
+    w.append(n)
+w.write("/out.pdf")
+`);
+  const out = pyodide.FS.readFile("/out.pdf");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([out], {type: "application/pdf"}));
+  a.download = "merged.pdf";
+  a.click();
+}
+</script>
